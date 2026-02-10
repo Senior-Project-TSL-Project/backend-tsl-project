@@ -22,12 +22,16 @@ async def lifespan(app: FastAPI):
     try:
         model_service.load_model()
     except Exception as e:
-        print(f"❌ Failed to load model: {e}")
-        raise e
+        print(f"⚠️ Warning: Failed to load MT5 model: {e}")
+        print("📌 App will continue running. MT5 predictions will be unavailable.")
+        print("💡 LLM predictions via Dify API are still available.")
     
     yield
     
-    model_service.unload_model()
+    try:
+        model_service.unload_model()
+    except:
+        pass
 
 
 app = FastAPI(

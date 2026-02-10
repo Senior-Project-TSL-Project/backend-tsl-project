@@ -2,12 +2,13 @@
 API Routes
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from .schemas import PredictRequest, PredictResponse, HealthResponse
 from .services.model_service import model_service
 from .services.llm_service import llm_service
 from .config import DEVICE
+from .auth import verify_api_key
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ async def health_check():
 
 
 @router.post("/predict", response_model=PredictResponse, tags=["Prediction"])
-async def predict(request: PredictRequest):
+async def predict(request: PredictRequest, api_key: str = Depends(verify_api_key)):
     if request.model == "mt5":
         if not model_service.is_loaded:
             raise HTTPException(
@@ -73,7 +74,7 @@ async def predict(request: PredictRequest):
 
 
 @router.post("/predict/stream", tags=["Prediction"])
-async def predict_stream(request: PredictRequest):
+async def predict_stream(request: PredictRequest, api_key: str = Depends(verify_api_key)):
     """
     Streaming prediction endpoint - returns text chunks as Server-Sent Events.
     Only supports LLM model.
