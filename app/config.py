@@ -11,7 +11,8 @@ import torch
 load_dotenv()
 
 # Model Configuration
-MODEL_PATH = Path(__file__).parent.parent / "model"
+# Path(__file__).parent.parent / "model"
+MODEL_PATH = "HomieZ09/TSL-mt5"
 PREFIX_TEXT = "translate Thai to TSL "
 MAX_LENGTH = 32
 
