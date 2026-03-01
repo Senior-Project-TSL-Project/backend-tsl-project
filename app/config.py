@@ -14,7 +14,7 @@ load_dotenv()
 
 # Model Configuration
 # Path(__file__).parent.parent / "model" , HomieZ09/TSL-mt5
-MODEL_PATH = Path(__file__).parent.parent / "model"
+MODEL_PATH = "HomieZ09/TSL-mt5"
 PREFIX_TEXT = "translate Thai to TSL "
 MAX_LENGTH = 32
 
@@ -24,7 +24,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
 # API Configuration
 API_TITLE = "Thai Sign Language API"
 API_DESCRIPTION = "API for converting Thai text to sign language glosses using MT5 model"
-API_VERSION = "1.2.1"
+API_VERSION = "1.2.2"
 
 # Dify LLM API Configuration
 DIFY_API_URL = os.getenv("DIFY_API_URL", "https://api.dify.ai/v1")
