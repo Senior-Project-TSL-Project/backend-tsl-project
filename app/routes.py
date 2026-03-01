@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from .schemas import PredictRequest, PredictResponse, HealthResponse, ModelInfo, ModelResponse
 from .services.model_service import model_service
 from .services.llm_service import llm_service
-from .config import DEVICE, MODEL_REGISTRY, get_model_config, get_available_models
+from .config import DEVICE, MODEL_REGISTRY, get_model_config, get_available_models, API_VERSION
 from .auth import verify_api_key
 
 router = APIRouter()
@@ -26,7 +26,7 @@ def get_service(service_name: str):
 async def root():
     return {
         "message": "Thai Sign Language API",
-        "version": "1.0.0",
+        "version": API_VERSION,
         "docs": "/docs"
     }
 
@@ -41,7 +41,7 @@ async def health_check():
         models[model_id] = ModelInfo(
             id=config.id,
             model=config.name,
-            disabled=service.is_loaded if service else False
+            disabled=not service.is_loaded if service else False
         )
     
     return HealthResponse(
@@ -167,7 +167,7 @@ async def models_dropdown(api_key: str = Depends(verify_api_key)):
         models.append(ModelInfo(
             id=config.id,
             model=config.name,
-            disabled=service.is_loaded if service else False
+            disabled=not service.is_loaded if service else False
         ))
     
     return models
