@@ -4,13 +4,23 @@ API Routes
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from .schemas import PredictRequest, PredictResponse, HealthResponse
+from .schemas import PredictRequest, PredictResponse, HealthResponse, ModelInfo, ModelResponse
 from .services.model_service import model_service
 from .services.llm_service import llm_service
-from .config import DEVICE
+from .config import DEVICE, MODEL_REGISTRY, get_model_config, get_available_models
 from .auth import verify_api_key
 
 router = APIRouter()
+
+
+def get_service(service_name: str):
+    """Get the appropriate service instance based on service name."""
+    services = {
+        "model_service": model_service,
+        "llm_service": llm_service,
+        # Add new services here as needed
+    }
+    return services.get(service_name)
 
 @router.get("/", tags=["Root"])
 async def root():
@@ -24,52 +34,66 @@ async def root():
 @router.get("/health", response_model=HealthResponse, tags=["Health"])
 async def health_check():
     '''Health check endpoint to verify API and model status.'''
+    # Build models dict from registry
+    models = {}
+    for model_id, config in MODEL_REGISTRY.items():
+        service = get_service(config.service_name)
+        models[model_id] = ModelInfo(
+            id=config.id,
+            model=config.name,
+            disabled=service.is_loaded if service else False
+        )
+    
     return HealthResponse(
         status="healthy",
-        model_loaded=model_service.is_loaded,
+        models=models,
         device=DEVICE
     )
 
 
 @router.post("/predict", response_model=PredictResponse, tags=["Prediction"])
 async def predict(request: PredictRequest, api_key: str = Depends(verify_api_key)):
-    if request.model == "mt5":
-        if not model_service.is_loaded:
-            raise HTTPException(
-                status_code=503,
-                detail="Model not loaded. Please try again later."
-            )
-        try:
-            gloss, confidence = model_service.predict_gloss(request.text)
-            
-            return PredictResponse(
-                input_text=request.text,
-                gloss=gloss,
-                confidence=round(confidence, 2)
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Prediction failed: {str(e)}"
-            )
-    elif request.model == "llm":
-        try:
-            gloss, confidence = await llm_service.predict_gloss(request.text)
-            
-            return PredictResponse(
-                input_text=request.text,
-                gloss=gloss,
-                confidence=round(confidence, 2)
-            )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"LLM prediction failed: {str(e)}"
-            )
-    else:
+    # Validate model ID
+    try:
+        model_config = get_model_config(request.model)
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Invalid model specified. Please use 'mt5' or 'llm'."
+            detail=str(e)
+        )
+    
+    # Get the appropriate service
+    service = get_service(model_config.service_name)
+    if not service:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Service '{model_config.service_name}' not found"
+        )
+    
+    # Check if service is loaded
+    if not service.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{model_config.name}' not loaded. Please try again later."
+        )
+    
+    # Execute prediction
+    try:
+        # Check if service has async predict_gloss
+        if model_config.type == "llm":
+            gloss, confidence = await service.predict_gloss(request.text)
+        else:
+            gloss, confidence = service.predict_gloss(request.text)
+        
+        return PredictResponse(
+            input_text=request.text,
+            gloss=gloss,
+            confidence=round(confidence, 2)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction failed: {str(e)}"
         )
 
 
@@ -77,17 +101,42 @@ async def predict(request: PredictRequest, api_key: str = Depends(verify_api_key
 async def predict_stream(request: PredictRequest, api_key: str = Depends(verify_api_key)):
     """
     Streaming prediction endpoint - returns text chunks as Server-Sent Events.
-    Only supports LLM model.
+    Only supports models with streaming capability.
     """
-    if request.model != "llm":
+    # Validate model ID
+    try:
+        model_config = get_model_config(request.model)
+    except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail="Streaming only supports 'llm' model."
+            detail=str(e)
+        )
+    
+    # Check if model supports streaming
+    if not model_config.supports_streaming:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{model_config.name}' does not support streaming. Available streaming models: {[k for k, v in MODEL_REGISTRY.items() if v.supports_streaming]}"
+        )
+    
+    # Get the appropriate service
+    service = get_service(model_config.service_name)
+    if not service:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Service '{model_config.service_name}' not found"
+        )
+    
+    # Check if service is loaded
+    if not service.is_loaded:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Model '{model_config.name}' not loaded. Please try again later."
         )
     
     async def generate():
         try:
-            async for chunk in llm_service.predict_gloss_stream(request.text):
+            async for chunk in service.predict_gloss_stream(request.text):
                 yield f"data: {chunk}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -101,3 +150,24 @@ async def predict_stream(request: PredictRequest, api_key: str = Depends(verify_
             "Connection": "keep-alive",
         }
     )
+
+@router.get("/models", response_model=ModelResponse, tags=["Models"])
+async def models(api_key: str = Depends(verify_api_key)):
+    """Get list of available models with their configurations."""
+    return {
+        "models": [get_model_config(model_id) for model_id in get_available_models()]
+    }
+
+@router.get("/models-dropdown", response_model=list[ModelInfo], tags=["Models"])
+async def models_dropdown(api_key: str = Depends(verify_api_key)):
+    """Get list of available models for dropdown selection."""
+    models = []
+    for model_id, config in MODEL_REGISTRY.items():
+        service = get_service(config.service_name)
+        models.append(ModelInfo(
+            id=config.id,
+            model=config.name,
+            disabled=service.is_loaded if service else False
+        ))
+    
+    return models
