@@ -2,7 +2,9 @@
 Pydantic schemas for request/response validation
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional
+from .config import ModelConfig
 
 
 class PredictRequest(BaseModel):
@@ -15,10 +17,20 @@ class PredictRequest(BaseModel):
         examples=["สวัสดีครับ"]
     )
     model: str = Field(
-        default="mt5",
-        description="Model to use for prediction",
-        examples=["mt5", "llm"]
+        default="mt5-tsl",
+        description="Model to use for prediction. Available: mt5-tsl, llm-gemini-2.5-pro",
+        examples=["mt5-tsl", "llm-gemini-2.5-pro"]
     )
+    
+    @field_validator('model')
+    @classmethod
+    def validate_model(cls, v: str) -> str:
+        """Validate model ID exists in registry."""
+        from .config import get_available_models
+        available = get_available_models()
+        if v not in available:
+            raise ValueError(f"Invalid model. Available models: {', '.join(available)}")
+        return v
 
 
 class PredictResponse(BaseModel):
@@ -33,8 +45,15 @@ class PredictResponse(BaseModel):
     )
 
 
+class ModelInfo(BaseModel):
+    id: str
+    model: str
+    disabled: bool
+
 class HealthResponse(BaseModel):
-    """Response model for health check endpoint."""
     status: str
-    model_loaded: bool
+    models: dict[str, ModelInfo]
     device: str
+ 
+class ModelResponse(BaseModel):
+    models: list[ModelConfig]

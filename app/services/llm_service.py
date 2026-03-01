@@ -11,6 +11,7 @@ class LLMService:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
+        self._is_loaded = bool(self.api_key)
     
     async def predict_gloss(self, text: str) -> tuple[str, float]:
         """
@@ -70,6 +71,10 @@ class LLMService:
                                     yield answer
                         except json.JSONDecodeError:
                             continue
+
+    @property 
+    def is_loaded(self) -> bool:
+        return self._is_loaded
 
 
 llm_service = LLMService()
