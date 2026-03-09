@@ -9,8 +9,6 @@ services:
     volumes:
       # Mount model folder for easier updates without rebuilding
       - ./model:/app/model:ro
-    env_file:
-      - .env
     environment:
       - PYTHONUNBUFFERED=1
       - DIFY_API_KEY=${DIFY_API_KEY}
